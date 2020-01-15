@@ -2,11 +2,14 @@
 
 namespace Picpay\Payment\Controller\Notification;
 
+use Magento\Framework\App\CsrfAwareActionInterface;
+use Magento\Framework\App\Request\InvalidRequestException;
+use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\ResultFactory;
 use Magento\Sales\Model\Order;
 use Magento\TestFramework\Event\Magento;
 
-class Index extends \Magento\Framework\App\Action\Action
+class Index extends \Magento\Framework\App\Action\Action implements CsrfAwareActionInterface
 {
     /**
      * @var \Psr\Log\LoggerInterface
@@ -126,29 +129,34 @@ class Index extends \Magento\Framework\App\Action\Action
         $referenceId = $request->get("referenceId");
         $authorizationId = $request->get("authorizationId");
         $resultPage = $this->resultJsonFactory->create();
-
+    
+        $response = ['success' => false];
+        $resultPage->setData($response);
+    
         if (!$this->getHelper()->isNotificationEnabled()) {
             return $resultPage->setHttpResponseCode(403);
         }
-
+    
         if (!$this->getHelper()->validateAuth($this->getRequest())) {
             return $resultPage->setHttpResponseCode(401);
         }
-
+    
         if (!$referenceId) {
             return $resultPage->setHttpResponseCode(422);
         }
-
+    
         $order = $this->salesOrderFactory->create()->loadByIncrementId($referenceId);
-
+    
         if (!$order || !$order->getId()) {
             return $resultPage->setHttpResponseCode(422);
         }
-
+    
         try {
             $return = $this->consultRequest($order);
             if (isset($return["return"]["status"])) {
                 $this->getHelper()->updateOrder($order, $return, $authorizationId);
+                $response = ['success' => true];
+                $resultPage->setData($response);
             } else {
                 return $resultPage->setHttpResponseCode(400);
             }
@@ -177,5 +185,31 @@ class Index extends \Magento\Framework\App\Action\Action
             return $result;
         }
         return false;
+    }
+    
+    /**
+     * Create exception in case CSRF validation failed.
+     * Return null if default exception will suffice.
+     *
+     * @param RequestInterface $request
+     *
+     * @return InvalidRequestException|null
+     */
+    public function createCsrfValidationException(RequestInterface $request)
+    {
+        return null;
+    }
+    
+    /**
+     * Perform custom request validation.
+     * Return null if default validation is needed.
+     *
+     * @param RequestInterface $request
+     *
+     * @return bool|null
+     */
+    public function validateForCsrf(RequestInterface $request)
+    {
+        return true;
     }
 }
